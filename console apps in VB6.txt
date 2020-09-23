@@ -1,0 +1,158 @@
+  Console Applications with VB6 - CAP.exe and basDosConsole.bas
+
+   Program : CAP.exe
+    Author : gridrun [TNC]
+   Version : 1.0.0
+  Platform : Win32 [tested on 98/2K]
+  Requires : msvbvm60.dll [VB runtime]
+             
+
+
+  Abstract
+
+    Normally, it is not possible for a Visual Basic 6 coder to create a "true"
+    console application. VB6 itself doesnt provide any means to do so, and
+    most console application classes and modules I saw so far, do not provide
+    the ability to run as a "true" console application either. Instead, the
+    bulk of those modules allocates a new console window for your application.
+
+    With CAP.exe and basDosConsole.bas however, you'll be able to create
+    "real" console applications that run *inside* a cmd.exe console, for
+    example. basDosConsole.bas based applications furthermore optionally
+    support STDIO, enabling DOS redirecton of your console applications.
+    And last, but not least, basDosConsole gives you the ability to debug
+    your console applications right in the VB IDE, without having to resort
+    to output log files and the like.
+
+    I did not find any other console application tool that offers STDIO as
+    well as debugging in IDE, with no reliance on Windows Scripting Host.
+    Enjoy :)
+    
+  
+
+  How To - CAP.exe
+
+    CAP.exe is a small utility that is placed inside the VB98 directory
+    of your VB6 installation. It must be renamed to LINK.EXE, and prior to
+    this, the original LINK.EXE file from this folder must be renamed
+    to LINK.ORIG.EXE.
+
+    After this is done, CAP will pop up a small window everytime you choose
+    to compile your VB project (File|Make Project.exe), and let you select one
+    of the three options (A)bort, (C)onsole or (W)indows.
+
+    I think the buttons are quite self explicatory. Whenever you want to build
+    a normal Windows application, or an ActiveX component, a click on the
+    "Windows" button will instruct LINK.EXE to build normally, for the
+    "WINDOWS,4.0" Subsystem. However, if you want to build a console app, you
+    can click on "Console" and LINK.EXE will be instructed to build for
+    Subsystem "CONSOLE".
+
+    CONSOLE subsystem applications have a different PE header than normal
+    WINDOWS applications. The altered header of a console application will
+    tell windows to load the application into a existing console, instead
+    of detaching it.
+
+    FYI: CAP.exe works by intercepting the command line parameters that
+         VB.exe passes to LINK.exe, and optionally modifying these.
+
+    So, this whole thingy basically enables you to compile for the console.
+    But how are you going to talk to the console? VB6 does not provide any
+    means to write something to the console, or to read from it, therefore
+    we have to make up our own.
+
+
+
+  How To - basDosConsole.bas
+
+    You can include basDosConsole.bas in your own projects.
+
+    It provides means for VB6 to interact with a console. This is not very
+    different from many other "console application" classes out there
+    (those that pop up a new console window, instead of using an existing
+    one), about the only difference lies in acquiring a console.
+
+    But with cap.exe, you compile your application as a "true" console 
+    application. The OS will recognize the "console mode", and provide the
+    existing console to your console application. Therefore, no need to
+    allocate a console on your own here. Unless, that is, you are running
+    your app in the VB IDE. In this case, there is no existing console, and
+    we have to create one. basDosConsole addresses this issues, altho in a
+    "dirty" way (there are some problems with the GetStdHandle() API call,
+    I will describe them later).
+
+    Therefore, you may be able to patch your existing console mode class
+    or -module to work with cap.exe and provide "true" console apps.
+    basDosConsole.bas on the other hand has a nice feature that makes it
+    especially useful: STDIO support. This is well suited to create batch
+    applications, and applications that will have theyr output redirected on
+    purpose.
+
+    STDIO support does however not work within the VB IDE (duh) and has
+    other limitations (some conAPI functions, such as cursor positioning, will
+    not work with STDIO), and STDINPUT is completely broken on Windows 9X
+    (due to ReadFile() madness in these OSen). basDosConsole.bas offers
+    therefore the ability to switch to Console API mode, respectively it will
+    override STDIN entirely, if executed on windows 98.
+
+    Ok, lets look at the functions that basDosConsole.bas provides:
+
+        ConAcquire()			- Set up console support
+        ConRelease()			- Shut down console support
+        ConErr(szError as String)	- Write line to STDERR channel
+        ConWrite(szOut as String)	- Write char to STDOUT channel
+        ConPrint(szOut as String)	- Write line to STDOUT channel
+        ConRead() as String		- Read line from STDIN channel
+
+    This is the list of supported functions as by now. Support for charwise
+    reading from STDIN is strongly anticipated, but not yet functional. There
+    is currently no function to read asynchronously from console, meaning
+    that the ConRead() function will block until the user presses enter.
+
+    The existing functions also work on console API instead of STD channels,
+    just set the global variable IOMode = 1 to enable ConAPI support.
+
+    As for using basDosConsole.bas in your own console projects, I suggest you
+    add a module to your application, create a Sub Main() and call ConAcquire()
+    instantly, from there. I also suggest you create a Sub Terminate() which
+    calls ConRelease() and performs other clean up tasks. Set your project
+    start up object to Sub Main in the project properties and there u go.
+
+
+
+  Remarks
+
+    I mentioned some problems with GetStdHandle() earlier. Ok, let me elaborate
+    on these. If you look @ the MSDN, GetStdHandle() should return a value of
+    -1 (INVALID_HANDLE_VALUE), when the call fails (ie when there is no
+    console avail, and therefore no STD channels present).
+
+    Testing the code on Windows 98 however yeld different results, as the
+    GetStdHandle() call would return 0 (zero) instead of -1, whenever the
+    call failed. On windows XP it was again different with handle values
+    that seem a bit random (-1, 24690, 4 for STDIN, -OUT and -ERR, 
+    respectively), when no console is present.
+
+    Testing against INVALID_HANDLE_VALUE (-1) would therefore not yeld desired$
+    results on these operating systems. Resulting from this is the line
+
+	If hConsoleIn < 4 Or hConsoleOut < 8 Or hConsoleErr < 12 Then
+
+    which worked flawlessly on all tested operating systems (2k Adv Server,
+    2k Pro, NT4 and Win98). Its however definately NOT the clean way to do it,
+    and it MIGHT fail even on valid handles.
+
+    Also, there are problems with reading from a redirected STDIN. I was not
+    able to solve these problems, so far, but I am researching further to find
+    a solution. Keep checking http://softlabs.spacebitch.com for updates.
+
+    You should be able to use cap.exe with your own console modules, just
+    make sure you do not try to allocate a console when running as compiled
+    exe, because the call to AllocConsole() will fail.
+
+    A final word to those who intend to write pure console applications:
+    If you have no forms, and you want your project to terminate, you
+    may use the End statement in your Terminate() sub (See above). But
+    make sure that you call ConRelease (this frees up handles and other stuff)
+    before, and to clean up anything else you allocated in memory.
+
